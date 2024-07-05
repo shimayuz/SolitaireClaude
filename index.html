@@ -516,66 +516,65 @@
             const cardElement = event.target.closest('.card');
             if (!cardElement || cardElement.dataset.faceUp === 'false') return;
 
-            event.preventDefault();
-            
-            const touch = event.touches[0];
-            startX = touch.clientX - cardElement.getBoundingClientRect().left;
+            event.preventDefault(); // デフォルトのタッチ動作を抑制
+
+            const touch = event.touches[0]; // 最初のタッチポイントを取得
+            startX = touch.clientX - cardElement.getBoundingClientRect().left; // タッチ開始位置の相対座標を計算
             startY = touch.clientY - cardElement.getBoundingClientRect().top;
-            
-            cardElement.classList.add('dragging');
-            
-            draggingCards = [];
+
+            cardElement.classList.add('dragging'); // ドラッグ中のカードにクラスを追加
+
+            draggingCards = []; // ドラッグ中のカードを格納する配列を初期化
             let current = cardElement;
             while (current) {
                 draggingCards.push(current);
-                current = current.nextElementSibling;
+                current = current.nextElementSibling; // 次のカード要素を取得
             }
         }
 
         function handleTouchMove(event) {
-            if (draggingCards.length === 0) return;
-            event.preventDefault();
+            if (draggingCards.length === 0) return; // ドラッグ中のカードがない場合は処理を終了
+            event.preventDefault(); // デフォルトのタッチ動作を抑制
 
             const touch = event.touches[0];
-            const draggedCard = draggingCards[0];
-            
-            const moveX = touch.clientX - startX;
+            const draggedCard = draggingCards[0]; // ドラッグ中の最初のカード
+
+            const moveX = touch.clientX - startX; // 移動量を計算
             const moveY = touch.clientY - startY;
-            
+
             draggingCards.forEach((card, index) => {
-                card.style.position = 'absolute';
-                card.style.left = `${moveX}px`;
-                card.style.top = `${moveY + index * 30}px`;
-                card.style.zIndex = 1000 + index;
+                card.style.position = 'absolute'; // カードを絶対位置に設定
+                card.style.left = `${moveX}px`; // 横方向の位置を設定
+                card.style.top = `${moveY + index * 30}px`; // 縦方向の位置を設定 (重なりを考慮)
+                card.style.zIndex = 1000 + index; // z-index を設定して、ドラッグ中のカードを最前面に表示
             });
         }
-
+        
         function handleTouchEnd(event) {
-            if (draggingCards.length === 0) return;
+            if (draggingCards.length === 0) return; // ドラッグ中のカードがない場合は処理を終了
 
-            const touch = event.changedTouches[0];
-            const draggedCard = draggingCards[0];
-            
+            const touch = event.changedTouches[0]; // タッチ終了時のタッチポイントを取得
+            const draggedCard = draggingCards[0]; // ドラッグ中の最初のカード
+
             // ドロップ先の要素を取得
             const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
-            let targetPile = targetElement.closest('.pile');
+            let targetPile = targetElement.closest('.pile'); // ドロップ先が山札かどうかを判定
 
+            // ドロップ先がカードの場合、そのカードを含む山札を取得
             if (!targetPile && targetElement.classList.contains('card')) {
                 targetPile = targetElement.closest('.pile');
             }
 
-            if (targetPile && canMoveCards(draggedCard, targetPile)) {
-                const sourcePile = draggedCard.closest('.pile');
-                
-                // カードを順番に移動（順序を維持）
+            if (targetPile && canMoveCards(draggedCard, targetPile)) { // ドロップ先が有効な山札であり、移動可能かどうか判定
+                const sourcePile = draggedCard.closest('.pile'); // 移動元の山札を取得
+
+                // カードを順番に移動 (順序を維持)
                 draggingCards.forEach(card => {
-                    sourcePile.removeChild(card);
-                });
-                draggingCards.forEach(card => {
-                    targetPile.appendChild(card);
+                    sourcePile.removeChild(card); // 移動元の山札からカードを削除
+                    targetPile.appendChild(card); // ドロップ先の山札にカードを追加
                 });
 
-                // 新規札（waste）からの移動の場合の特別処理
+                // 新規札 (waste) からの移動の場合の特別処理
                 if (sourcePile.id === 'waste') {
                     waste.pop(); // 移動したカードを waste 配列から削除
                     updateWastePile(); // waste pile の表示を更新
@@ -696,6 +695,7 @@
             dealCards();
 
             const gameContainer = document.getElementById('game-container');
+            // タッチイベントリスナーを追加
             gameContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
             gameContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
             gameContainer.addEventListener('touchend', handleTouchEnd);
