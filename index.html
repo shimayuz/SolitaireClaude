@@ -136,6 +136,22 @@
                 margin: 2px;
             }
         }
+
+        #customization-container {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        #custom-designs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -171,6 +187,8 @@
         let waste = [];
         let nextCardId = 0;
         let draggingCards = [];
+        let customBackDesigns = {};
+        let currentBackDesign = 'default';
 
         function createDeck() {
             deck = [];
@@ -206,7 +224,12 @@
                 cardElement.draggable = true;
                 cardElement.addEventListener('dragstart', drag);
             } else {
-                cardContent.textContent = '🂠';
+                if (currentBackDesign === 'default') {
+                    cardContent.textContent = '🂠';
+                } else {
+                    cardElement.style.backgroundImage = `url(${customBackDesigns[currentBackDesign]})`;
+                    cardElement.style.backgroundSize = 'cover';
+                }
             }
             
             cardElement.appendChild(cardContent);
@@ -338,6 +361,52 @@
             }
         }
 
+        function canMoveCards(draggedCard, targetElement) {
+            const draggedValue = draggedCard.dataset.value;
+            const draggedSuit = draggedCard.dataset.suit;
+            const sourcePile = draggedCard.closest('.pile');
+
+            // 基礎札からの移動は許可しない
+            if (sourcePile.id.startsWith('foundation')) {
+                return false;
+            }
+
+            if (targetElement.classList.contains('pile')) {
+                const pileId = targetElement.id;
+                if (pileId.startsWith('foundation')) {
+                    // 基礎札への移動は1枚のみ
+                    return draggedValue === 'A' && draggingCards.length === 1 && targetElement.children.length === 0 ||
+                           (targetElement.lastElementChild &&
+                            draggedSuit === targetElement.lastElementChild.dataset.suit &&
+                            valueToNumber(draggedValue) === valueToNumber(targetElement.lastElementChild.dataset.value) + 1 &&
+                            draggingCards.length === 1);
+                } else if (pileId.startsWith('tableau')) {
+                    // 場札への移動
+                    if (targetElement.children.length === 0) {
+                        // 空の場札にはKのみ置ける
+                        return draggedValue === 'K';
+                    } else {
+                        const topCard = targetElement.lastElementChild;
+                        const topValue = topCard.dataset.value;
+                        const topSuit = topCard.dataset.suit;
+                        const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (topSuit === '♥' || topSuit === '♦');
+                        return isDifferentColor && valueToNumber(draggedValue) === valueToNumber(topValue) - 1;
+                    }
+                }
+            } else if (targetElement.classList.contains('card')) {
+                // カードへの移動（場札の途中への移動）
+                const targetPile = targetElement.closest('.pile');
+                if (targetPile.id.startsWith('tableau')) {
+                    const targetValue = targetElement.dataset.value;
+                    const targetSuit = targetElement.dataset.suit;
+                    const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (targetSuit === '♥' || targetSuit === '♦');
+                    return isDifferentColor && valueToNumber(draggedValue) === valueToNumber(targetValue) - 1;
+                }
+            }
+
+            return false;
+        }
+
         function allowDrop(event) {
             event.preventDefault();
         }
@@ -372,32 +441,6 @@
             draggingCards = [];
         }
 
-        function canMoveCards(draggedCard, targetCard) {
-            const draggedValue = draggedCard.dataset.value;
-            const draggedSuit = draggedCard.dataset.suit;
-
-            if (targetCard.classList.contains('pile')) {
-                const pileId = targetCard.id;
-                if (pileId.startsWith('foundation')) {
-                    return draggedValue === 'A' && targetCard.children.length === 0 && draggingCards.length === 1;
-                } else if (pileId.startsWith('tableau')) {
-                    return draggedValue === 'K' && targetCard.children.length === 0;
-                }
-            } else {
-                const targetValue = targetCard.dataset.value;
-                const targetSuit = targetCard.dataset.suit;
-
-                if (targetCard.closest('.pile').id.startsWith('foundation')) {
-                    return draggedSuit === targetSuit && valueToNumber(draggedValue) === valueToNumber(targetValue) + 1 && draggingCards.length === 1;
-                } else {
-                    const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (targetSuit === '♥' || targetSuit === '♦');
-                    return isDifferentColor && valueToNumber(draggedValue) === valueToNumber(targetValue) - 1;
-                }
-            }
-
-            return false;
-        }
-
         function valueToNumber(value) {
             const valueMap = { 'A': 1, 'J': 11, 'Q': 12, 'K': 13 };
             return valueMap[value] || parseInt(value);
@@ -418,11 +461,22 @@
                 card.draggable = true;
                 card.addEventListener('dragstart', drag);
                 card.dataset.faceUp = 'true';
+                // 背景画像を削除し、適切なクラスを追加
+                card.style.backgroundImage = '';
+                card.classList.add(card.dataset.suit === '♥' || card.dataset.suit === '♦' ? 'hearts' : 'spades');
             } else {
-                cardContent.textContent = '🂠';
+                if (currentBackDesign === 'default') {
+                    cardContent.textContent = '🂠';
+                } else {
+                    card.style.backgroundImage = `url(${customBackDesigns[currentBackDesign]})`;
+                    card.style.backgroundSize = 'cover';
+                    cardContent.textContent = '';
+                }
                 card.draggable = false;
                 card.removeEventListener('dragstart', drag);
                 card.dataset.faceUp = 'false';
+                // クラスを削除
+                card.classList.remove('hearts', 'spades');
             }
         }
 
@@ -456,37 +510,55 @@
             const draggingCard = document.querySelector('.card.dragging');
             if (!draggingCard) return;
 
-            const targetElement = document.elementFromPoint(event.changedTouches[0].pageX, event.changedTouches[0].pageY);
-            const targetPile = targetElement.closest('.pile');
+            const touch = event.changedTouches[0];
+            const targetElement = document.elementFromPoint(touch.pageX, touch.pageY);
+            let targetPile = targetElement.closest('.pile');
+
+            // If the target is not a pile, check if it's a card and get its parent pile
+            if (!targetPile && targetElement.classList.contains('card')) {
+                targetPile = targetElement.closest('.pile');
+            }
 
             if (targetPile && canMoveCards(draggingCard, targetPile)) {
-                draggingCards.forEach(card => targetPile.appendChild(card));
-                flipTopCard(draggingCard.closest('.pile'));
+                const sourcePile = draggingCard.closest('.pile');
+                moveCards(draggingCard, targetPile);
+                flipTopCard(sourcePile);
 
-                if (draggingCard.closest('.pile').id === 'waste') {
+                if (sourcePile.id === 'waste') {
                     waste.pop();
                     updateWastePile();
                 }
             }
 
-            draggingCard.style.position = '';
-            draggingCard.style.left = '';
-            draggingCard.style.top = '';
-            draggingCard.classList.remove('dragging');
+            resetDraggingCardStyle(draggingCard);
             draggingCards = [];
         }
 
+        function moveCards(draggedCard, targetPile) {
+            draggingCards.forEach(card => targetPile.appendChild(card));
+        }
+
+        function resetDraggingCardStyle(card) {
+            card.style.position = '';
+            card.style.left = '';
+            card.style.top = '';
+            card.classList.remove('dragging');
+        }
+
+        // initGame関数内でのイベントリスナー設定の修正
         function initGame() {
             createDeck();
             dealCards();
+
+            const gameContainer = document.getElementById('game-container');
+            gameContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+            gameContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+            gameContainer.addEventListener('touchend', handleTouchEnd);
 
             const piles = document.querySelectorAll('.pile');
             piles.forEach(pile => {
                 pile.addEventListener('dragover', allowDrop);
                 pile.addEventListener('drop', drop);
-                pile.addEventListener('touchstart', handleTouchStart, { passive: false });
-                pile.addEventListener('touchmove', handleTouchMove, { passive: false });
-                pile.addEventListener('touchend', handleTouchEnd);
             });
 
             const newGameBtn = document.getElementById('new-game-btn');
@@ -495,6 +567,8 @@
             } else {
                 console.error("New Game button not found");
             }
+
+            initCustomization();
         }
 
         function startNewGame() {
@@ -502,7 +576,104 @@
             dealCards();
         }
 
+        function initCustomization() {
+            const toggleButton = document.createElement('button');
+            toggleButton.id = 'customization-toggle';
+            toggleButton.textContent = 'カスタマイズ';
+            toggleButton.addEventListener('click', toggleCustomizationPanel);
+            document.body.appendChild(toggleButton);
+
+            const customizationContainer = document.createElement('div');
+            customizationContainer.id = 'customization-container';
+            customizationContainer.innerHTML = `
+                <h3>トランプ裏面カスタマイズ</h3>
+                <input type="text" id="image-url-input" placeholder="画像URLを入力">
+                <button id="upload-image-btn">アップロード</button>
+                <div id="custom-designs"></div>
+            `;
+            
+            document.body.appendChild(customizationContainer);
+
+            document.getElementById('upload-image-btn').addEventListener('click', uploadCustomDesign);
+            loadCustomDesigns();
+            updateCustomDesignsDisplay();
+        }
+
+        function toggleCustomizationPanel() {
+            const panel = document.getElementById('customization-container');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function uploadCustomDesign() {
+            const imageUrl = document.getElementById('image-url-input').value;
+            if (!imageUrl) return;
+
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 60;  // カードの幅
+                canvas.height = 90; // カードの高さ
+                ctx.drawImage(img, 0, 0, 60, 90);
+                const resizedImageUrl = canvas.toDataURL('image/png');
+                
+                const designName = `custom_${Object.keys(customBackDesigns).length + 1}`;
+                customBackDesigns[designName] = resizedImageUrl;
+                saveCustomDesigns();
+                updateCustomDesignsDisplay();
+            };
+            img.onerror = function() {
+                alert('画像の読み込みに失敗しました。URLを確認してください。');
+            };
+            img.src = imageUrl;
+        }
+
+        function saveCustomDesigns() {
+            localStorage.setItem('customBackDesigns', JSON.stringify(customBackDesigns));
+        }
+
+        function loadCustomDesigns() {
+            const saved = localStorage.getItem('customBackDesigns');
+            if (saved) {
+                customBackDesigns = JSON.parse(saved);
+            }
+        }
+
+        function updateCustomDesignsDisplay() {
+            const container = document.getElementById('custom-designs');
+            container.innerHTML = '';
+            Object.keys(customBackDesigns).forEach(designName => {
+                const designElement = document.createElement('div');
+                designElement.innerHTML = `
+                    <img src="${customBackDesigns[designName]}" width="30" height="45">
+                    <button onclick="applyCustomDesign('${designName}')">適用</button>
+                `;
+                container.appendChild(designElement);
+            });
+        }
+
+        function applyCustomDesign(designName) {
+            currentBackDesign = designName;
+            updateCardBackDesigns();
+            toggleCustomizationPanel(); // パネルを閉じる
+        }
+
+        function updateCardBackDesigns() {
+            const cards = document.querySelectorAll('.card[data-face-up="false"]');
+            cards.forEach(card => {
+                if (currentBackDesign === 'default') {
+                    card.style.backgroundImage = '';
+                    card.querySelector('.card-content').textContent = '🂠';
+                } else {
+                    card.style.backgroundImage = `url(${customBackDesigns[currentBackDesign]})`;
+                    card.style.backgroundSize = 'cover';
+                    card.querySelector('.card-content').textContent = '';
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', initGame);
-        </script>
+    </script>
 </body>
 </html>
