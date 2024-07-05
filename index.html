@@ -129,11 +129,29 @@
         }
 
         @media (max-width: 576px) {
+            :root {
+                --card-width: 40px;
+                --card-height: 60px;
+                --pile-width: 50px;
+                --pile-height: 70px;
+            }
             #game-container {
-                padding: 10px;
+                padding: 5px;
             }
             .pile {
                 margin: 2px;
+            }
+            .card {
+                font-size: 14px;
+                margin-bottom: -45px;
+            }
+            #foundation, #stock-waste {
+                justify-content: space-around;
+            }
+            #tableau {
+                justify-content: flex-start;
+                overflow-x: auto;
+                padding-bottom: 10px;
             }
         }
 
@@ -496,10 +514,16 @@
         }
 
         function handleTouchMove(event) {
-            event.preventDefault();
-            const touch = event.touches[0];
             const draggingCard = document.querySelector('.card.dragging');
             if (!draggingCard) return;
+
+            event.preventDefault();
+            const touch = event.touches[0];
+            
+            // 移動距離が小さい場合は処理をスキップ
+            const moveX = Math.abs(touch.clientX - draggingCard.dataset.tapStartX);
+            const moveY = Math.abs(touch.clientY - draggingCard.dataset.tapStartY);
+            if (moveX < 5 && moveY < 5) return;
 
             draggingCard.style.position = 'absolute';
             draggingCard.style.left = `${touch.pageX - draggingCard.offsetWidth / 2}px`;
@@ -569,6 +593,22 @@
             }
 
             initCustomization();
+
+            // ウィンドウサイズ変更時にレイアウトを調整
+            window.addEventListener('resize', adjustLayout);
+            adjustLayout();
+        }
+
+        function adjustLayout() {
+            const gameContainer = document.getElementById('game-container');
+            const tableau = document.getElementById('tableau');
+            if (window.innerWidth <= 576) {
+                gameContainer.style.height = `${window.innerHeight}px`;
+                tableau.style.height = `${window.innerHeight - 250}px`;
+            } else {
+                gameContainer.style.height = '';
+                tableau.style.height = '';
+            }
         }
 
         function startNewGame() {
@@ -598,7 +638,6 @@
             loadCustomDesigns();
             updateCustomDesignsDisplay();
         }
-
         function toggleCustomizationPanel() {
             const panel = document.getElementById('customization-container');
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
