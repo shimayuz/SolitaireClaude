@@ -384,22 +384,27 @@
             const draggedSuit = draggedCard.dataset.suit;
             const sourcePile = draggedCard.closest('.pile');
 
-            // 基礎札からの移動は許可しない
-            if (sourcePile.id.startsWith('foundation')) {
-                return false;
-            }
+            // 新規札(waste)または場札(tableau)からの移動
+            if (sourcePile.id === 'waste' || sourcePile.id.startsWith('tableau')) {
+                // 基礎札への移動
+                if (targetElement.classList.contains('pile') && targetElement.id.startsWith('foundation')) {
+                    // 1枚のカードのみ移動可能
+                    if (draggingCards.length !== 1) return false;
 
-            if (targetElement.classList.contains('pile')) {
-                const pileId = targetElement.id;
-                if (pileId.startsWith('foundation')) {
-                    // 基礎札への移動は1枚のみ
-                    return draggedValue === 'A' && draggingCards.length === 1 && targetElement.children.length === 0 ||
-                           (targetElement.lastElementChild &&
-                            draggedSuit === targetElement.lastElementChild.dataset.suit &&
-                            valueToNumber(draggedValue) === valueToNumber(targetElement.lastElementChild.dataset.value) + 1 &&
-                            draggingCards.length === 1);
-                } else if (pileId.startsWith('tableau')) {
-                    // 場札への移動
+                    const topCard = targetElement.lastElementChild;
+                    if (!topCard) {
+                        // 空の基礎札にはAのみ置ける
+                        return draggedValue === 'A';
+                    } else {
+                        // 既存のカードの上には同じスートの次の数字のカードのみ置ける
+                        const topValue = topCard.dataset.value;
+                        return draggedSuit === topCard.dataset.suit &&
+                               values.indexOf(draggedValue) === values.indexOf(topValue) + 1;
+                    }
+                }
+
+                // 場札への移動
+                if (targetElement.classList.contains('pile') && targetElement.id.startsWith('tableau')) {
                     if (targetElement.children.length === 0) {
                         // 空の場札にはKのみ置ける
                         return draggedValue === 'K';
@@ -408,18 +413,25 @@
                         const topValue = topCard.dataset.value;
                         const topSuit = topCard.dataset.suit;
                         const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (topSuit === '♥' || topSuit === '♦');
-                        return isDifferentColor && valueToNumber(draggedValue) === valueToNumber(topValue) - 1;
+                        return isDifferentColor && values.indexOf(draggedValue) === values.indexOf(topValue) - 1;
                     }
                 }
-            } else if (targetElement.classList.contains('card')) {
-                // カードへの移動（場札の途中への移動）
-                const targetPile = targetElement.closest('.pile');
-                if (targetPile.id.startsWith('tableau')) {
-                    const targetValue = targetElement.dataset.value;
-                    const targetSuit = targetElement.dataset.suit;
-                    const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (targetSuit === '♥' || targetSuit === '♦');
-                    return isDifferentColor && valueToNumber(draggedValue) === valueToNumber(targetValue) - 1;
+
+                // 場札の途中のカードへの移動
+                if (targetElement.classList.contains('card')) {
+                    const targetPile = targetElement.closest('.pile');
+                    if (targetPile.id.startsWith('tableau')) {
+                        const targetValue = targetElement.dataset.value;
+                        const targetSuit = targetElement.dataset.suit;
+                        const isDifferentColor = (draggedSuit === '♥' || draggedSuit === '♦') !== (targetSuit === '♥' || targetSuit === '♦');
+                        return isDifferentColor && values.indexOf(draggedValue) === values.indexOf(targetValue) - 1;
+                    }
                 }
+            }
+
+            // 基礎札からの移動は許可しない
+            if (sourcePile.id.startsWith('foundation')) {
+                return false;
             }
 
             return false;
@@ -428,7 +440,6 @@
         function allowDrop(event) {
             event.preventDefault();
         }
-
         function drop(event) {
             event.preventDefault();
             const data = event.dataTransfer.getData('text');
@@ -442,11 +453,16 @@
             if (!targetElement) return;
 
             if (canMoveCards(draggedElement, targetElement)) {
-                if (targetElement.classList.contains('pile')) {
-                    draggingCards.forEach(card => targetElement.appendChild(card));
-                } else {
-                    draggingCards.forEach(card => targetElement.parentNode.insertBefore(card, targetElement.nextSibling));
-                }
+                const targetPile = targetElement.classList.contains('pile') ? targetElement : targetElement.closest('.pile');
+                
+                // カードを順番に移動（順序を維持）
+                draggingCards.forEach(card => {
+                    sourcePile.removeChild(card);
+                });
+                draggingCards.forEach(card => {
+                    targetPile.appendChild(card);
+                });
+
                 flipTopCard(sourcePile);
 
                 if (sourcePileId === 'waste') {
@@ -458,7 +474,6 @@
             draggingCards.forEach(card => card.classList.remove('dragging'));
             draggingCards = [];
         }
-
         function valueToNumber(value) {
             const valueMap = { 'A': 1, 'J': 11, 'Q': 12, 'K': 13 };
             return valueMap[value] || parseInt(value);
@@ -497,12 +512,16 @@
                 card.classList.remove('hearts', 'spades');
             }
         }
-
         function handleTouchStart(event) {
             const cardElement = event.target.closest('.card');
-            if (!cardElement) return;
+            if (!cardElement || cardElement.dataset.faceUp === 'false') return;
 
             event.preventDefault();
+            
+            const touch = event.touches[0];
+            startX = touch.clientX - cardElement.getBoundingClientRect().left;
+            startY = touch.clientY - cardElement.getBoundingClientRect().top;
+            
             cardElement.classList.add('dragging');
             
             draggingCards = [];
@@ -514,62 +533,164 @@
         }
 
         function handleTouchMove(event) {
-            const draggingCard = document.querySelector('.card.dragging');
-            if (!draggingCard) return;
-
+            if (draggingCards.length === 0) return;
             event.preventDefault();
-            const touch = event.touches[0];
-            
-            // 移動距離が小さい場合は処理をスキップ
-            const moveX = Math.abs(touch.clientX - draggingCard.dataset.tapStartX);
-            const moveY = Math.abs(touch.clientY - draggingCard.dataset.tapStartY);
-            if (moveX < 5 && moveY < 5) return;
 
-            draggingCard.style.position = 'absolute';
-            draggingCard.style.left = `${touch.pageX - draggingCard.offsetWidth / 2}px`;
-            draggingCard.style.top = `${touch.pageY - draggingCard.offsetHeight / 2}px`;
+            const touch = event.touches[0];
+            const draggedCard = draggingCards[0];
+            
+            const moveX = touch.clientX - startX;
+            const moveY = touch.clientY - startY;
+            
+            draggingCards.forEach((card, index) => {
+                card.style.position = 'absolute';
+                card.style.left = `${moveX}px`;
+                card.style.top = `${moveY + index * 30}px`;
+                card.style.zIndex = 1000 + index;
+            });
         }
 
         function handleTouchEnd(event) {
-            const draggingCard = document.querySelector('.card.dragging');
-            if (!draggingCard) return;
+            if (draggingCards.length === 0) return;
 
             const touch = event.changedTouches[0];
-            const targetElement = document.elementFromPoint(touch.pageX, touch.pageY);
+            const draggedCard = draggingCards[0];
+            
+            // ドロップ先の要素を取得
+            const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
             let targetPile = targetElement.closest('.pile');
 
-            // If the target is not a pile, check if it's a card and get its parent pile
             if (!targetPile && targetElement.classList.contains('card')) {
                 targetPile = targetElement.closest('.pile');
             }
 
-            if (targetPile && canMoveCards(draggingCard, targetPile)) {
-                const sourcePile = draggingCard.closest('.pile');
-                moveCards(draggingCard, targetPile);
-                flipTopCard(sourcePile);
+            if (targetPile && canMoveCards(draggedCard, targetPile)) {
+                const sourcePile = draggedCard.closest('.pile');
+                
+                // カードを順番に移動（順序を維持）
+                draggingCards.forEach(card => {
+                    sourcePile.removeChild(card);
+                });
+                draggingCards.forEach(card => {
+                    targetPile.appendChild(card);
+                });
 
+                // 新規札（waste）からの移動の場合の特別処理
                 if (sourcePile.id === 'waste') {
-                    waste.pop();
-                    updateWastePile();
+                    waste.pop(); // 移動したカードを waste 配列から削除
+                    updateWastePile(); // waste pile の表示を更新
+                } else {
+                    flipTopCard(sourcePile); // waste 以外の場合は、元の山札の一番上のカードをめくる
                 }
+
+                // 自動移動を試行
+                autoMoveToFoundation();
+            } else {
+                // 移動できない場合は元の位置に戻す
+                const sourcePile = draggedCard.closest('.pile');
+                draggingCards.forEach(card => {
+                    card.style.position = '';
+                    card.style.left = '';
+                    card.style.top = '';
+                    card.style.zIndex = '';
+                });
+                // カードを元の順序で並べ直す
+                draggingCards.forEach(card => sourcePile.appendChild(card));
             }
 
-            resetDraggingCardStyle(draggingCard);
+            draggingCards.forEach(card => card.classList.remove('dragging'));
+            draggingCards = [];
+        }
+
+        function drop(event) {
+            event.preventDefault();
+            const draggedElement = document.querySelector('.dragging');
+            const targetElement = event.target.closest('.pile') || event.target.closest('.card');
+
+            if (!draggedElement || !targetElement) return;
+
+            if (canMoveCards(draggedElement, targetElement)) {
+                const sourcePile = draggedElement.closest('.pile');
+                const targetPile = targetElement.closest('.pile');
+
+                // カードを順番に移動（順序を維持）
+                draggingCards.forEach(card => {
+                    sourcePile.removeChild(card);
+                });
+                draggingCards.forEach(card => {
+                    targetPile.appendChild(card);
+                });
+
+                // 新規札（waste）からの移動の場合の特別処理
+                if (sourcePile.id === 'waste') {
+                    waste.pop(); // 移動したカードを waste 配列から削除
+                    updateWastePile(); // waste pile の表示を更新
+                } else {
+                    flipTopCard(sourcePile); // waste 以外の場合は、元の山札の一番上のカードをめくる
+                }
+
+                // 自動移動を試行
+                autoMoveToFoundation();
+            } else {
+                // 移動できない場合は元の位置に戻す
+                draggingCards.forEach(card => resetDraggingCardStyle(card));
+            }
+
+            draggingCards.forEach(card => card.classList.remove('dragging'));
             draggingCards = [];
         }
 
         function moveCards(draggedCard, targetPile) {
             draggingCards.forEach(card => targetPile.appendChild(card));
         }
-
         function resetDraggingCardStyle(card) {
             card.style.position = '';
             card.style.left = '';
             card.style.top = '';
             card.classList.remove('dragging');
         }
+        // 他のグローバル関数の後に追加
+        function autoMoveToFoundation() {
+            let moved = true;
+            while (moved) {
+                moved = false;
+                // waste からの自動移動
+                if (waste.length > 0) {
+                    const wasteCard = document.querySelector('#waste .card:last-child');
+                    if (wasteCard && tryMoveToFoundation(wasteCard)) {
+                        moved = true;
+                        continue;
+                    }
+                }
+                // tableau からの自動移動
+                for (let i = 1; i <= 7; i++) {
+                    const tableauPile = document.getElementById(`tableau-${i}`);
+                    const tableauCard = tableauPile.lastElementChild;
+                    if (tableauCard && tryMoveToFoundation(tableauCard)) {
+                        moved = true;
+                        break;
+                    }
+                }
+            }
+        }
 
-        // initGame関数内でのイベントリスナー設定の修正
+        function tryMoveToFoundation(card) {
+            for (let i = 1; i <= 4; i++) {
+                const foundationPile = document.getElementById(`foundation-${i}`);
+                if (canMoveCards(card, foundationPile)) {
+                    const sourcePile = card.closest('.pile');
+                    foundationPile.appendChild(card);
+                    if (sourcePile.id === 'waste') {
+                        waste.pop();
+                        updateWastePile();
+                    } else {
+                        flipTopCard(sourcePile);
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
         function initGame() {
             createDeck();
             dealCards();
@@ -593,12 +714,10 @@
             }
 
             initCustomization();
-
             // ウィンドウサイズ変更時にレイアウトを調整
             window.addEventListener('resize', adjustLayout);
             adjustLayout();
         }
-
         function adjustLayout() {
             const gameContainer = document.getElementById('game-container');
             const tableau = document.getElementById('tableau');
@@ -614,8 +733,10 @@
         function startNewGame() {
             createDeck();
             dealCards();
-        }
 
+            // 自動移動を試行
+            autoMoveToFoundation();
+        }
         function initCustomization() {
             const toggleButton = document.createElement('button');
             toggleButton.id = 'customization-toggle';
@@ -638,6 +759,7 @@
             loadCustomDesigns();
             updateCustomDesignsDisplay();
         }
+
         function toggleCustomizationPanel() {
             const panel = document.getElementById('customization-container');
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
